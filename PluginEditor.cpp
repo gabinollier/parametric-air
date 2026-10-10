@@ -1,6 +1,8 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+#include "Theme.h"
+
 //==============================================================================
 void KnobLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
                                         float sliderPos, float rotaryStartAngle, float rotaryEndAngle,
@@ -54,7 +56,7 @@ void KnobLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int wid
 juce::Label* KnobLookAndFeel::createSliderTextBox (juce::Slider& slider)
 {
     auto* label = juce::LookAndFeel_V4::createSliderTextBox (slider);
-    label->setFont (juce::Font (juce::FontOptions (16.0f)));
+    label->setFont (juce::Font (juce::FontOptions (15.0f)));
     return label;
 }
 
@@ -62,47 +64,126 @@ juce::Label* KnobLookAndFeel::createSliderTextBox (juce::Slider& slider)
 AudioPluginAudioProcessorEditor::AudioPluginAudioProcessorEditor (AudioPluginAudioProcessor& p)
     : AudioProcessorEditor (&p),
       processorRef (p),
-      gainAttachment (p.parameters, "gain", gainSlider)
+      spectrum (p),
+      presenceAmountAttachment (p.parameters, "presenceAmount", presenceAmountKnob),
+      presenceFreqAttachment (p.parameters, "presenceFreq", presenceFreqKnob),
+      airAmountAttachment (p.parameters, "airAmount", airAmountKnob),
+      airFreqAttachment (p.parameters, "airFreq", airFreqKnob),
+      trimAttachment (p.parameters, "trim", trimKnob)
 {
-    juce::ignoreUnused (processorRef);
+    setupKnob (presenceAmountKnob, Theme::presence);
+    setupKnob (presenceFreqKnob, Theme::presence);
+    setupKnob (airAmountKnob, Theme::air);
+    setupKnob (airFreqKnob, Theme::air);
+    setupKnob (trimKnob, Theme::trim);
 
-    gainSlider.setLookAndFeel (&knobLookAndFeel);
-    gainSlider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-    gainSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 100, 28);
-    gainSlider.setTextValueSuffix (" dB");
+    setupCaption (presenceTitle, "PRESENCE", Theme::presence, true);
+    setupCaption (airTitle, "AIR", Theme::air, true);
+    setupCaption (outputTitle, "OUTPUT", Theme::trim, true);
+    setupCaption (presenceAmountCaption, "AMOUNT", Theme::dimText, false);
+    setupCaption (presenceFreqCaption, "FREQ", Theme::dimText, false);
+    setupCaption (airAmountCaption, "AMOUNT", Theme::dimText, false);
+    setupCaption (airFreqCaption, "FREQ", Theme::dimText, false);
+    setupCaption (trimCaption, "TRIM", Theme::dimText, false);
 
-    gainSlider.setColour (juce::Slider::rotarySliderFillColourId, juce::Colour (0xff4fb8f5));
-    gainSlider.setColour (juce::Slider::rotarySliderOutlineColourId, juce::Colour (0xff363a42));
-    gainSlider.setColour (juce::Slider::textBoxTextColourId, juce::Colours::white.withAlpha (0.85f));
-    gainSlider.setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
-    gainSlider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    matchButton.setButtonText ("Match");
+    matchButton.setColour (juce::TextButton::buttonColourId, Theme::trim.withAlpha (0.12f));
+    matchButton.setColour (juce::TextButton::buttonOnColourId, Theme::trim.withAlpha (0.25f));
+    matchButton.setColour (juce::TextButton::textColourOffId, Theme::text);
+    matchButton.setColour (juce::TextButton::textColourOnId, Theme::text);
+    matchButton.onClick = [this] { processorRef.requestGainMatch(); };
+    addAndMakeVisible (matchButton);
 
-    addAndMakeVisible (gainSlider);
+    addAndMakeVisible (spectrum);
 
-    setSize (300, 330);
+    startTimerHz (10);
+    setSize (660, 470);
 }
 
 AudioPluginAudioProcessorEditor::~AudioPluginAudioProcessorEditor()
 {
-    gainSlider.setLookAndFeel (nullptr);
+    for (auto* knob : { &presenceAmountKnob, &presenceFreqKnob, &airAmountKnob, &airFreqKnob, &trimKnob })
+        knob->setLookAndFeel (nullptr);
+}
+
+//==============================================================================
+void AudioPluginAudioProcessorEditor::setupKnob (juce::Slider& knob, juce::Colour accent)
+{
+    knob.setLookAndFeel (&knobLookAndFeel);
+    knob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+    knob.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 72, 22);
+    knob.setColour (juce::Slider::rotarySliderFillColourId, accent);
+    knob.setColour (juce::Slider::rotarySliderOutlineColourId, Theme::knobOutline);
+    knob.setColour (juce::Slider::textBoxTextColourId, juce::Colours::white.withAlpha (0.85f));
+    knob.setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
+    knob.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    addAndMakeVisible (knob);
+}
+
+void AudioPluginAudioProcessorEditor::setupCaption (juce::Label& label, const juce::String& text,
+                                                    juce::Colour colour, bool bold)
+{
+    const auto options = juce::FontOptions (11.0f);
+    label.setText (text, juce::dontSendNotification);
+    label.setJustificationType (juce::Justification::centred);
+    label.setFont (juce::Font (bold ? options.withStyle ("Bold") : options));
+    label.setColour (juce::Label::textColourId, colour.withMultipliedAlpha (bold ? 1.0f : 0.75f));
+    addAndMakeVisible (label);
+}
+
+void AudioPluginAudioProcessorEditor::layoutKnobGroup (juce::Rectangle<int> area, juce::Label& title,
+                                                       juce::Slider& firstKnob, juce::Label& firstCaption,
+                                                       juce::Slider& secondKnob, juce::Label& secondCaption)
+{
+    title.setBounds (area.removeFromTop (20));
+
+    auto firstArea = area.removeFromLeft (area.getWidth() / 2).reduced (6, 2);
+    auto secondArea = area.reduced (6, 2);
+
+    firstCaption.setBounds (firstArea.removeFromBottom (16));
+    firstKnob.setBounds (firstArea);
+
+    secondCaption.setBounds (secondArea.removeFromBottom (16));
+    secondKnob.setBounds (secondArea);
 }
 
 //==============================================================================
 void AudioPluginAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff20232a), 0.0f, 0.0f,
-                                             juce::Colour (0xff111216), 0.0f, (float) getHeight(), false));
+    g.setGradientFill (juce::ColourGradient (Theme::backgroundTop, 0.0f, 0.0f,
+                                             Theme::backgroundBottom, 0.0f, (float) getHeight(), false));
     g.fillAll();
-
-    g.setColour (juce::Colours::white.withAlpha (0.85f));
-    g.setFont (juce::Font (juce::FontOptions (18.0f).withStyle ("Bold")));
-    g.drawText ("ParametricAir", getLocalBounds().removeFromTop (54), juce::Justification::centred);
 }
 
 void AudioPluginAudioProcessorEditor::resized()
 {
-    auto area = getLocalBounds();
-    area.removeFromTop (54);
+    auto area = getLocalBounds().reduced (10);
 
-    gainSlider.setBounds (area.reduced (20));
+    const auto groupHeight = 150;
+
+    spectrum.setBounds (area.removeFromTop (area.getHeight() - groupHeight - 8));
+    area.removeFromTop (8);
+
+    const auto groupWidth = area.getWidth() / 3;
+
+    layoutKnobGroup (area.removeFromLeft (groupWidth), presenceTitle, presenceAmountKnob,
+                     presenceAmountCaption, presenceFreqKnob, presenceFreqCaption);
+    layoutKnobGroup (area.removeFromLeft (groupWidth), airTitle, airAmountKnob,
+                     airAmountCaption, airFreqKnob, airFreqCaption);
+
+    outputTitle.setBounds (area.removeFromTop (20));
+
+    auto trimArea = area.removeFromLeft (area.getWidth() / 2).reduced (6, 2);
+    trimCaption.setBounds (trimArea.removeFromBottom (16));
+    trimKnob.setBounds (trimArea);
+
+    auto buttonArea = area.reduced (10, 4);
+    matchButton.setBounds (buttonArea.withSizeKeepingCentre (juce::jmin (120, buttonArea.getWidth()), 32));
+}
+
+void AudioPluginAudioProcessorEditor::timerCallback()
+{
+    const auto matching = processorRef.isMatching();
+    matchButton.setButtonText (matching ? "Matching..." : "Match");
+    matchButton.setEnabled (! matching);
 }
