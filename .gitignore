@@ -24,3 +24,6 @@ _deps/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local files
+AGENTS.md
