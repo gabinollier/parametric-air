@@ -7,8 +7,13 @@
 namespace
 {
     constexpr std::array<float, 3> gridFrequencies { 100.0f, 1000.0f, 10000.0f };
-    constexpr std::array<float, 5> gridDecibels { -80.0f, -60.0f, -40.0f, -20.0f, 0.0f };
-    constexpr float maxBandCurveHeight = 0.5f;
+    constexpr std::array<float, 3> gridDecibels { -60.0f, -30.0f, 0.0f };
+
+    juce::String formatFrequency (float frequency)
+    {
+        return frequency >= 1000.0f ? juce::String (frequency / 1000.0f, 0) + " kHz"
+                                    : juce::String (juce::roundToInt (frequency)) + " Hz";
+    }
 }
 
 //==============================================================================
@@ -36,17 +41,10 @@ void SpectrumDisplay::paint (juce::Graphics& g)
 
     drawGrid (g);
     drawLevels (g, inputLevels, Theme::spectrumInputLine, Theme::spectrumInputFill);
-    drawLevels (g, addedLevels, Theme::spectrumAddedLine, Theme::spectrumAddedFill);
-
-    const auto presenceAmount = processorRef.parameters.getRawParameterValue ("presenceAmount")->load() * 0.01f;
-    const auto airAmount = processorRef.parameters.getRawParameterValue ("airAmount")->load() * 0.01f;
-
-    drawBandShape (g, processorRef.getPresenceBand(), presenceAmount, Theme::presence);
-    drawBandShape (g, processorRef.getAirBand(), airAmount, Theme::air);
+    drawLevels (g, presenceLevels, Theme::presence.withMultipliedSaturation (0.9f), Theme::presence);
+    drawLevels (g, airLevels, Theme::air.withMultipliedSaturation (0.9f), Theme::air);
 
     g.restoreState();
-
-    drawLegend (g);
 }
 
 //==============================================================================
@@ -63,9 +61,15 @@ void SpectrumDisplay::timerCallback()
         needsRepaint = true;
     }
 
-    if (processorRef.getAddedSpectrum().readLatest (addedSamples))
+    if (processorRef.getPresenceSpectrum().readLatest (presenceSamples))
     {
-        updateLevels (addedSamples, addedLevels);
+        updateLevels (presenceSamples, presenceLevels);
+        needsRepaint = true;
+    }
+
+    if (processorRef.getAirSpectrum().readLatest (airSamples))
+    {
+        updateLevels (airSamples, airLevels);
         needsRepaint = true;
     }
 
@@ -111,7 +115,8 @@ void SpectrumDisplay::updateLevels (const std::array<float, SpectrumBuffer::fftS
 //==============================================================================
 void SpectrumDisplay::drawGrid (juce::Graphics& g) const
 {
-    g.setFont (juce::Font (juce::FontOptions (10.0f)));
+    const auto font = juce::Font (juce::FontOptions (10.0f));
+    g.setFont (font);
 
     for (auto frequency : gridFrequencies)
     {
@@ -122,54 +127,25 @@ void SpectrumDisplay::drawGrid (juce::Graphics& g) const
         g.setColour (juce::Colours::white.withAlpha (0.07f));
         g.drawVerticalLine (x, 0.0f, (float) getHeight());
 
-        const auto text = frequency >= 1000.0f
-                              ? juce::String (frequency / 1000.0f, 0) + "k"
-                              : juce::String (frequency, 0);
-        g.setColour (juce::Colours::white.withAlpha (0.28f));
-        g.drawText (text, juce::Rectangle<int> (x + 3, getHeight() - 15, 40, 12),
+        g.setColour (juce::Colours::white.withAlpha (0.32f));
+        g.drawText (formatFrequency (frequency), x + 4, getHeight() - 15, 60, 12,
                     juce::Justification::centredLeft);
     }
 
     for (auto decibels : gridDecibels)
     {
-        if (decibels < minDecibels || decibels > maxDecibels)
-            continue;
+        const auto y = juce::roundToInt (yForDecibels (decibels));
 
-        g.setColour (juce::Colours::white.withAlpha (0.05f));
-        g.drawHorizontalLine (juce::roundToInt (yForDecibels (decibels)), 0.0f, (float) getWidth());
+        g.setColour (juce::Colours::white.withAlpha (0.06f));
+        g.drawHorizontalLine (y, 0.0f, (float) getWidth());
+
+        g.setColour (juce::Colours::white.withAlpha (0.32f));
+        g.drawText (juce::String (juce::roundToInt (decibels)), 6, y - 13, 40, 12,
+                    juce::Justification::centredLeft);
     }
-}
 
-void SpectrumDisplay::drawLegend (juce::Graphics& g) const
-{
-    struct Entry
-    {
-        juce::Colour colour;
-        const char* text;
-    };
-
-    const Entry entries[] {
-        { Theme::spectrumInputLine, "IN" },
-        { Theme::spectrumAddedLine, "PARALLEL" },
-        { Theme::presence, "PRESENCE" },
-        { Theme::air, "AIR" },
-    };
-
-    const auto font = juce::Font (juce::FontOptions (10.0f));
-    g.setFont (font);
-
-    auto x = 10;
-
-    for (const auto& entry : entries)
-    {
-        g.setColour (entry.colour.withAlpha (0.9f));
-        g.fillRoundedRectangle ((float) x, 11.0f, 8.0f, 8.0f, 2.0f);
-
-        g.setColour (juce::Colours::white.withAlpha (0.45f));
-        g.drawText (entry.text, x + 12, 8, 80, 12, juce::Justification::centredLeft);
-
-        x += 12 + juce::GlyphArrangement::getStringWidthInt (font, entry.text) + 14;
-    }
+    g.setColour (juce::Colours::white.withAlpha (0.35f));
+    g.drawText ("dB", getWidth() - 30, 5, 24, 12, juce::Justification::centredRight);
 }
 
 void SpectrumDisplay::drawLevels (juce::Graphics& g, const std::array<float, numColumns>& levels,
@@ -192,52 +168,11 @@ void SpectrumDisplay::drawLevels (juce::Graphics& g, const std::array<float, num
     fill.lineTo (0.0f, height);
     fill.closeSubPath();
 
-    g.setColour (fillColour.withAlpha (0.45f));
+    g.setColour (fillColour.withAlpha (0.4f));
     g.fillPath (fill);
 
-    g.setColour (lineColour.withAlpha (0.8f));
+    g.setColour (lineColour.withAlpha (0.85f));
     g.strokePath (curve, juce::PathStrokeType (1.2f));
-}
-
-void SpectrumDisplay::drawBandShape (juce::Graphics& g, const DynamicBand& band,
-                                     float amount01, juce::Colour colour) const
-{
-    const auto sampleRate = processorRef.getSampleRate();
-
-    if (sampleRate <= 0.0)
-        return;
-
-    const auto width = (float) getWidth();
-    const auto height = (float) getHeight();
-    const auto visualAmount = juce::jmax (0.12f, amount01);
-    const auto coefficients = band.getCurrentCoefficients();
-
-    juce::Path curve;
-
-    for (int x = 0; x <= juce::roundToInt (width); ++x)
-    {
-        const auto frequency = frequencyForX ((float) x);
-        const auto magnitude = coefficients->getMagnitudeForFrequency ((double) frequency, sampleRate);
-        const auto magnitudeDb = juce::jlimit (-24.0, 0.0, juce::Decibels::gainToDecibels (magnitude, -24.0));
-        const auto shape = (float) (magnitudeDb + 24.0) / 24.0f;
-        const auto y = height - shape * visualAmount * maxBandCurveHeight * height;
-
-        if (x == 0)
-            curve.startNewSubPath (0.0f, y);
-        else
-            curve.lineTo ((float) x, y);
-    }
-
-    auto fill = curve;
-    fill.lineTo (width, height);
-    fill.lineTo (0.0f, height);
-    fill.closeSubPath();
-
-    g.setColour (colour.withAlpha (0.10f + 0.15f * amount01));
-    g.fillPath (fill);
-
-    g.setColour (colour.withAlpha (0.45f + 0.35f * amount01));
-    g.strokePath (curve, juce::PathStrokeType (1.4f));
 }
 
 //==============================================================================
@@ -259,5 +194,14 @@ float SpectrumDisplay::frequencyForX (float x) const
 
 float SpectrumDisplay::yForDecibels (float decibels) const
 {
-    return (maxDecibels - decibels) / (maxDecibels - minDecibels) * (float) getHeight();
+    const auto clamped = juce::jlimit (minDecibels, maxDecibels, decibels);
+
+    const auto fullSpanWeight = (maxDecibels - kneeDecibels)
+                              + (kneeDecibels - minDecibels) * lowRangeScale;
+
+    const auto weight = clamped >= kneeDecibels
+                            ? maxDecibels - clamped
+                            : (maxDecibels - kneeDecibels) + (kneeDecibels - clamped) * lowRangeScale;
+
+    return weight / fullSpanWeight * (float) getHeight();
 }

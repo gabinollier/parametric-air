@@ -1,5 +1,12 @@
 #include "DynamicBand.h"
 
+namespace
+{
+    // Compensation applied to cascaded sections so the overall response keeps
+    // the requested bandwidth.
+    constexpr float cascadeQCompensation = 0.64f;
+}
+
 DynamicBand::DynamicBand (float bandQ, float attackMs, float releaseMs,
                           float thresholdDbToUse, float ratioToUse, float maxBoostDbToUse)
     : q (bandQ),
@@ -18,22 +25,20 @@ void DynamicBand::prepare (double sampleRateToUse)
     attackCoeff  = 1.0f - std::exp (-1.0f / (float) (sampleRate * attackSeconds));
     releaseCoeff = 1.0f - std::exp (-1.0f / (float) (sampleRate * releaseSeconds));
 
-    smoothedBoostDb.reset (sampleRate, 0.02);
+    maxBoostGain = juce::Decibels::decibelsToGain (maxBoostDb);
+
+    smoothedAmountGain.reset (sampleRate, 0.02);
     reset();
 }
 
 void DynamicBand::reset()
 {
-    filters[0].reset();
-    filters[1].reset();
-    envelope = 0.0f;
-    smoothedBoostDb.setCurrentAndTargetValue (smoothedBoostDb.getTargetValue());
-}
+    for (auto& channel : filters)
+        for (auto& section : channel)
+            section.reset();
 
-juce::dsp::IIR::Coefficients<float>::Ptr DynamicBand::getCurrentCoefficients() const
-{
-    return juce::dsp::IIR::Coefficients<float>::makeBandPass (
-        sampleRate, smoothedFrequency.load (std::memory_order_relaxed), q);
+    envelope = 0.0f;
+    smoothedAmountGain.setCurrentAndTargetValue (smoothedAmountGain.getTargetValue());
 }
 
 void DynamicBand::process (const juce::AudioBuffer<float>& dryInput,
@@ -45,15 +50,16 @@ void DynamicBand::process (const juce::AudioBuffer<float>& dryInput,
     if (numChannels <= 0 || numSamples <= 0)
         return;
 
-    const auto currentFrequency = smoothedFrequency.load (std::memory_order_relaxed);
-    smoothedFrequency.store (currentFrequency + (centreFrequencyHz - currentFrequency) * 0.25f,
-                             std::memory_order_relaxed);
+    smoothedFrequency += (centreFrequencyHz - smoothedFrequency) * 0.25f;
 
-    const auto coefficients = getCurrentCoefficients();
-    filters[0].coefficients = coefficients;
-    filters[1].coefficients = coefficients;
+    const auto coefficients = juce::dsp::IIR::Coefficients<float>::makeBandPass (
+        sampleRate, smoothedFrequency, q * cascadeQCompensation);
 
-    smoothedBoostDb.setTargetValue (maxBoostDb * std::pow (juce::jlimit (0.0f, 1.0f, amount01), 0.75f));
+    for (auto& channel : filters)
+        for (auto& section : channel)
+            section.coefficients = coefficients;
+
+    smoothedAmountGain.setTargetValue (maxBoostGain * std::pow (juce::jlimit (0.0f, 1.0f, amount01), 0.75f));
 
     const auto* in0 = dryInput.getReadPointer (0);
     const auto* in1 = dryInput.getReadPointer (numChannels > 1 ? 1 : 0);
@@ -63,21 +69,23 @@ void DynamicBand::process (const juce::AudioBuffer<float>& dryInput,
                      : nullptr;
     auto* contribution = monoContribution != nullptr ? monoContribution->getWritePointer (0) : nullptr;
 
-    auto& filter0 = filters[0];
-    auto& filter1 = filters[1];
+    auto& filter0a = filters[0][0];
+    auto& filter0b = filters[0][1];
+    auto& filter1a = filters[1][0];
+    auto& filter1b = filters[1][1];
 
     for (int n = 0; n < numSamples; ++n)
     {
-        const auto band0 = filter0.processSample (in0[n]);
-        const auto band1 = filter1.processSample (in1[n]);
+        const auto band0 = filter0b.processSample (filter0a.processSample (in0[n]));
+        const auto band1 = filter1b.processSample (filter1a.processSample (in1[n]));
 
         const auto rectified = 0.5f * (std::abs (band0) + std::abs (band1));
         envelope += (rectified - envelope) * (rectified > envelope ? attackCoeff : releaseCoeff);
 
         const auto levelDb = juce::Decibels::gainToDecibels (envelope, -120.0f);
         const auto overDb = juce::jmax (0.0f, levelDb - thresholdDb);
-        const auto gainDb = smoothedBoostDb.getNextValue() - overDb * (1.0f - 1.0f / ratio);
-        const auto gain = juce::Decibels::decibelsToGain (gainDb);
+        const auto compressionGain = juce::Decibels::decibelsToGain (-overDb * (1.0f - 1.0f / ratio));
+        const auto gain = smoothedAmountGain.getNextValue() * compressionGain;
 
         out0[n] += band0 * gain;
 

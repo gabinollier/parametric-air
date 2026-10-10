@@ -15,6 +15,4 @@ namespace Theme
 
     inline const juce::Colour spectrumInputLine { 0xff8ea3c7 };
     inline const juce::Colour spectrumInputFill { 0xff46536b };
-    inline const juce::Colour spectrumAddedLine { 0xff9fd8ff };
-    inline const juce::Colour spectrumAddedFill { 0xff2f6fa8 };
 }

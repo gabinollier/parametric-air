@@ -181,7 +181,9 @@ void AudioPluginAudioProcessor::changeProgramName (int index, const juce::String
 void AudioPluginAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     dryScratch.setSize (2, samplesPerBlock, false, false, true);
-    addedScratch.setSize (1, samplesPerBlock, false, false, true);
+    monoScratch.setSize (1, samplesPerBlock, false, false, true);
+    presenceScratch.setSize (1, samplesPerBlock, false, false, true);
+    airScratch.setSize (1, samplesPerBlock, false, false, true);
 
     presenceBand.prepare (sampleRate);
     airBand.prepare (sampleRate);
@@ -190,7 +192,8 @@ void AudioPluginAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
     outputGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (trimParameterValue->load()));
 
     inputSpectrum.clear();
-    addedSpectrum.clear();
+    presenceSpectrum.clear();
+    airSpectrum.clear();
 
     inputLoudness.prepare (sampleRate);
     outputLoudness.prepare (sampleRate);
@@ -248,7 +251,7 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     for (int channel = 0; channel < numChannels; ++channel)
         dryScratch.copyFrom (channel, 0, buffer, channel, 0, numSamples);
 
-    auto* mono = addedScratch.getWritePointer (0);
+    auto* mono = monoScratch.getWritePointer (0);
 
     if (numChannels > 1)
     {
@@ -275,14 +278,16 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         matchRunning = true;
     }
 
-    addedScratch.clear();
+    presenceScratch.clear();
+    airScratch.clear();
 
-    presenceBand.process (dryScratch, buffer, &addedScratch, numChannels, numSamples,
+    presenceBand.process (dryScratch, buffer, &presenceScratch, numChannels, numSamples,
                           presenceFrequencyParameter->load(), presenceAmountParameter->load() * 0.01f);
-    airBand.process (dryScratch, buffer, &addedScratch, numChannels, numSamples,
+    airBand.process (dryScratch, buffer, &airScratch, numChannels, numSamples,
                      airFrequencyParameter->load(), airAmountParameter->load() * 0.01f);
 
-    addedSpectrum.push (addedScratch.getReadPointer (0), numSamples);
+    presenceSpectrum.push (presenceScratch.getReadPointer (0), numSamples);
+    airSpectrum.push (airScratch.getReadPointer (0), numSamples);
 
     outputGain.setTargetValue (juce::Decibels::decibelsToGain (trimParameterValue->load()));
     outputGain.applyGain (buffer, numSamples);

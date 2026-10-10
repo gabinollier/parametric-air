@@ -2,8 +2,6 @@
 
 #include <juce_dsp/juce_dsp.h>
 
-#include <atomic>
-
 class DynamicBand
 {
 public:
@@ -19,8 +17,6 @@ public:
                   int numChannels, int numSamples,
                   float centreFrequencyHz, float amount01);
 
-    juce::dsp::IIR::Coefficients<float>::Ptr getCurrentCoefficients() const;
-
 private:
     const float q;
     const float attackSeconds;
@@ -32,10 +28,11 @@ private:
     double sampleRate = 44100.0;
     float attackCoeff = 0.5f;
     float releaseCoeff = 0.01f;
+    float maxBoostGain = 1.0f;
 
-    std::atomic<float> smoothedFrequency { 1000.0f };
-    juce::SmoothedValue<float> smoothedBoostDb;
-    juce::dsp::IIR::Filter<float> filters[2];
+    float smoothedFrequency = 1000.0f;
+    juce::SmoothedValue<float> smoothedAmountGain;
+    juce::dsp::IIR::Filter<float> filters[2][2];
     float envelope = 0.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DynamicBand)

@@ -22,6 +22,8 @@ private:
     static constexpr float maxFrequency = 20000.0f;
     static constexpr float minDecibels = -90.0f;
     static constexpr float maxDecibels = 6.0f;
+    static constexpr float kneeDecibels = -30.0f;
+    static constexpr float lowRangeScale = 0.3f;
     static constexpr float decayDbPerSecond = 36.0f;
 
     void timerCallback() override;
@@ -30,11 +32,8 @@ private:
                        std::array<float, numColumns>& levels);
 
     void drawGrid (juce::Graphics&) const;
-    void drawLegend (juce::Graphics&) const;
     void drawLevels (juce::Graphics&, const std::array<float, numColumns>& levels,
                      juce::Colour lineColour, juce::Colour fillColour) const;
-    void drawBandShape (juce::Graphics&, const DynamicBand& band, float amount01,
-                        juce::Colour colour) const;
 
     float getDisplayMaxFrequency() const;
     float xForFrequency (float frequency) const;
@@ -48,9 +47,11 @@ private:
                                                  juce::dsp::WindowingFunction<float>::hann };
     std::array<float, SpectrumBuffer::fftSize * 2> fftData {};
     std::array<float, SpectrumBuffer::fftSize> inputSamples {};
-    std::array<float, SpectrumBuffer::fftSize> addedSamples {};
+    std::array<float, SpectrumBuffer::fftSize> presenceSamples {};
+    std::array<float, SpectrumBuffer::fftSize> airSamples {};
     std::array<float, numColumns> inputLevels {};
-    std::array<float, numColumns> addedLevels {};
+    std::array<float, numColumns> presenceLevels {};
+    std::array<float, numColumns> airLevels {};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SpectrumDisplay)
 };

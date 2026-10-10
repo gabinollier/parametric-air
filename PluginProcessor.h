@@ -53,9 +53,8 @@ public:
     juce::AudioProcessorValueTreeState parameters;
 
     SpectrumBuffer& getInputSpectrum() noexcept     { return inputSpectrum; }
-    SpectrumBuffer& getAddedSpectrum() noexcept     { return addedSpectrum; }
-    const DynamicBand& getPresenceBand() const noexcept { return presenceBand; }
-    const DynamicBand& getAirBand() const noexcept      { return airBand; }
+    SpectrumBuffer& getPresenceSpectrum() noexcept  { return presenceSpectrum; }
+    SpectrumBuffer& getAirSpectrum() noexcept       { return airSpectrum; }
 
     void requestGainMatch();
     bool isMatching() const noexcept                { return matchRunning.load(); }
@@ -69,7 +68,7 @@ private:
     DynamicBand presenceBand, airBand;
 
     juce::SmoothedValue<float> outputGain;
-    juce::AudioBuffer<float> dryScratch, addedScratch;
+    juce::AudioBuffer<float> dryScratch, monoScratch, presenceScratch, airScratch;
 
     std::atomic<float>* presenceAmountParameter = nullptr;
     std::atomic<float>* presenceFrequencyParameter = nullptr;
@@ -78,7 +77,7 @@ private:
     std::atomic<float>* trimParameterValue = nullptr;
     juce::RangedAudioParameter* trimParameter = nullptr;
 
-    SpectrumBuffer inputSpectrum, addedSpectrum;
+    SpectrumBuffer inputSpectrum, presenceSpectrum, airSpectrum;
     LoudnessMeter inputLoudness, outputLoudness;
 
     std::atomic<bool> matchRequested { false };
