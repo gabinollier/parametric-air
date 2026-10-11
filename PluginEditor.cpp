@@ -61,10 +61,8 @@ juce::Label* KnobLookAndFeel::createSliderTextBox (juce::Slider& slider)
 }
 
 //==============================================================================
-AudioPluginAudioProcessorEditor::AudioPluginAudioProcessorEditor (AudioPluginAudioProcessor& p)
-    : AudioProcessorEditor (&p),
-      processorRef (p),
-      spectrum (p),
+ControlPanel::ControlPanel (AudioPluginAudioProcessor& p)
+    : processorRef (p),
       presenceAmountAttachment (p.parameters, "presenceAmount", presenceAmountKnob),
       presenceFreqAttachment (p.parameters, "presenceFreq", presenceFreqKnob),
       airAmountAttachment (p.parameters, "airAmount", airAmountKnob),
@@ -94,20 +92,17 @@ AudioPluginAudioProcessorEditor::AudioPluginAudioProcessorEditor (AudioPluginAud
     matchButton.onClick = [this] { processorRef.requestGainMatch(); };
     addAndMakeVisible (matchButton);
 
-    addAndMakeVisible (spectrum);
-
     startTimerHz (10);
-    setSize (660, 470);
 }
 
-AudioPluginAudioProcessorEditor::~AudioPluginAudioProcessorEditor()
+ControlPanel::~ControlPanel()
 {
     for (auto* knob : { &presenceAmountKnob, &presenceFreqKnob, &airAmountKnob, &airFreqKnob, &trimKnob })
         knob->setLookAndFeel (nullptr);
 }
 
 //==============================================================================
-void AudioPluginAudioProcessorEditor::setupKnob (juce::Slider& knob, juce::Colour accent)
+void ControlPanel::setupKnob (juce::Slider& knob, juce::Colour accent)
 {
     knob.setLookAndFeel (&knobLookAndFeel);
     knob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
@@ -120,8 +115,8 @@ void AudioPluginAudioProcessorEditor::setupKnob (juce::Slider& knob, juce::Colou
     addAndMakeVisible (knob);
 }
 
-void AudioPluginAudioProcessorEditor::setupCaption (juce::Label& label, const juce::String& text,
-                                                    juce::Colour colour, bool bold)
+void ControlPanel::setupCaption (juce::Label& label, const juce::String& text,
+                                 juce::Colour colour, bool bold)
 {
     const auto options = juce::FontOptions (11.0f);
     label.setText (text, juce::dontSendNotification);
@@ -131,9 +126,9 @@ void AudioPluginAudioProcessorEditor::setupCaption (juce::Label& label, const ju
     addAndMakeVisible (label);
 }
 
-void AudioPluginAudioProcessorEditor::layoutKnobGroup (juce::Rectangle<int> area, juce::Label& title,
-                                                       juce::Slider& firstKnob, juce::Label& firstCaption,
-                                                       juce::Slider& secondKnob, juce::Label& secondCaption)
+void ControlPanel::layoutKnobGroup (juce::Rectangle<int> area, juce::Label& title,
+                                    juce::Slider& firstKnob, juce::Label& firstCaption,
+                                    juce::Slider& secondKnob, juce::Label& secondCaption)
 {
     title.setBounds (area.removeFromTop (20));
 
@@ -148,21 +143,26 @@ void AudioPluginAudioProcessorEditor::layoutKnobGroup (juce::Rectangle<int> area
 }
 
 //==============================================================================
-void AudioPluginAudioProcessorEditor::paint (juce::Graphics& g)
+void ControlPanel::paint (juce::Graphics& g)
 {
-    g.setGradientFill (juce::ColourGradient (Theme::backgroundTop, 0.0f, 0.0f,
-                                             Theme::backgroundBottom, 0.0f, (float) getHeight(), false));
-    g.fillAll();
+    const auto bubble = getLocalBounds().reduced (shadowSize).toFloat();
+
+    juce::Path bubblePath;
+    bubblePath.addRoundedRectangle (bubble, cornerRadius);
+
+    juce::DropShadow (juce::Colours::black.withAlpha (0.5f), shadowSize * 2, { 0, 3 })
+        .drawForPath (g, bubblePath);
+
+    g.setColour (juce::Colours::black.withAlpha (0.55f));
+    g.fillPath (bubblePath);
+
+    g.setColour (juce::Colours::white.withAlpha (0.07f));
+    g.strokePath (bubblePath, juce::PathStrokeType (1.0f));
 }
 
-void AudioPluginAudioProcessorEditor::resized()
+void ControlPanel::resized()
 {
-    auto area = getLocalBounds().reduced (10);
-
-    const auto groupHeight = 150;
-
-    spectrum.setBounds (area.removeFromTop (area.getHeight() - groupHeight - 8));
-    area.removeFromTop (8);
+    auto area = getLocalBounds().reduced (shadowSize).reduced (14, 10);
 
     const auto groupWidth = area.getWidth() / 3;
 
@@ -181,9 +181,44 @@ void AudioPluginAudioProcessorEditor::resized()
     matchButton.setBounds (buttonArea.withSizeKeepingCentre (juce::jmin (120, buttonArea.getWidth()), 32));
 }
 
-void AudioPluginAudioProcessorEditor::timerCallback()
+void ControlPanel::timerCallback()
 {
     const auto matching = processorRef.isMatching();
     matchButton.setButtonText (matching ? "Matching..." : "Match");
     matchButton.setEnabled (! matching);
+}
+
+//==============================================================================
+AudioPluginAudioProcessorEditor::AudioPluginAudioProcessorEditor (AudioPluginAudioProcessor& p)
+    : AudioProcessorEditor (&p),
+      processorRef (p),
+      spectrum (p),
+      controlPanel (p)
+{
+    juce::ignoreUnused (processorRef);
+
+    addAndMakeVisible (spectrum);
+    addAndMakeVisible (controlPanel);
+
+    setSize (680, 540);
+}
+
+AudioPluginAudioProcessorEditor::~AudioPluginAudioProcessorEditor()
+{
+}
+
+//==============================================================================
+void AudioPluginAudioProcessorEditor::paint (juce::Graphics& g)
+{
+    g.setGradientFill (juce::ColourGradient (Theme::backgroundTop, 0.0f, 0.0f,
+                                             Theme::backgroundBottom, 0.0f, (float) getHeight(), false));
+    g.fillAll();
+}
+
+void AudioPluginAudioProcessorEditor::resized()
+{
+    auto area = getLocalBounds();
+
+    spectrum.setBounds (area);
+    controlPanel.setBounds (area.reduced (8).removeFromBottom (ControlPanel::preferredHeight));
 }

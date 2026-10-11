@@ -128,7 +128,7 @@ void SpectrumDisplay::drawGrid (juce::Graphics& g) const
         g.drawVerticalLine (x, 0.0f, (float) getHeight());
 
         g.setColour (juce::Colours::white.withAlpha (0.32f));
-        g.drawText (formatFrequency (frequency), x + 4, getHeight() - 15, 60, 12,
+        g.drawText (formatFrequency (frequency), x + 4, 6, 60, 12,
                     juce::Justification::centredLeft);
     }
 
@@ -145,7 +145,7 @@ void SpectrumDisplay::drawGrid (juce::Graphics& g) const
     }
 
     g.setColour (juce::Colours::white.withAlpha (0.35f));
-    g.drawText ("dB", getWidth() - 30, 5, 24, 12, juce::Justification::centredRight);
+    g.drawText ("dB", 6, 6, 24, 12, juce::Justification::centredLeft);
 }
 
 void SpectrumDisplay::drawLevels (juce::Graphics& g, const std::array<float, numColumns>& levels,

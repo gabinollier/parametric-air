@@ -15,18 +15,22 @@ public:
 };
 
 //==============================================================================
-class AudioPluginAudioProcessorEditor final : public juce::AudioProcessorEditor,
-                                              private juce::Timer
+class ControlPanel final : public juce::Component,
+                           private juce::Timer
 {
 public:
-    explicit AudioPluginAudioProcessorEditor (AudioPluginAudioProcessor&);
-    ~AudioPluginAudioProcessorEditor() override;
+    explicit ControlPanel (AudioPluginAudioProcessor&);
+    ~ControlPanel() override;
 
-    //==============================================================================
     void paint (juce::Graphics&) override;
     void resized() override;
 
+    static constexpr int preferredHeight = 166;
+
 private:
+    static constexpr int shadowSize = 10;
+    static constexpr float cornerRadius = 14.0f;
+
     void timerCallback() override;
 
     void setupKnob (juce::Slider&, juce::Colour accent);
@@ -38,7 +42,6 @@ private:
     AudioPluginAudioProcessor& processorRef;
 
     KnobLookAndFeel knobLookAndFeel;
-    SpectrumDisplay spectrum;
 
     juce::Slider presenceAmountKnob, presenceFreqKnob;
     juce::Slider airAmountKnob, airFreqKnob;
@@ -53,6 +56,28 @@ private:
     juce::Label outputTitle, trimCaption;
 
     juce::TextButton matchButton;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ControlPanel)
+};
+
+//==============================================================================
+class AudioPluginAudioProcessorEditor final : public juce::AudioProcessorEditor
+{
+public:
+    explicit AudioPluginAudioProcessorEditor (AudioPluginAudioProcessor&);
+    ~AudioPluginAudioProcessorEditor() override;
+
+    //==============================================================================
+    void paint (juce::Graphics&) override;
+    void resized() override;
+
+private:
+    // This reference is provided as a quick way for your editor to
+    // access the processor object that created it.
+    AudioPluginAudioProcessor& processorRef;
+
+    SpectrumDisplay spectrum;
+    ControlPanel controlPanel;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioPluginAudioProcessorEditor)
 };
