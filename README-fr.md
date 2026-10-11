@@ -1,6 +1,6 @@
 # ParametricAir
 
-Fr | [En](README.md)
+Langue : [Fr | [En](README.md)]
 
 !["Captures d'écran du plugin"](README-assets/screenshot.png)
 
