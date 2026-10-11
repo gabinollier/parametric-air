@@ -1,5 +1,7 @@
 # ParametricAir
 
+Language: [[Fr](README-fr.md) | En]
+
 !["Screenshots of the plugin"](README-assets/screenshot.png)
 
 ParametricAir is an audio plugin meant to enhance presence and air, inspired by FreshAir. 
@@ -35,11 +37,3 @@ sudo apt install libasound2-dev libfreetype6-dev libgl1-mesa-dev libx11-dev \
 ```
 
 The build produces a VST3 plugin and a standalone application (mainly for testing).
-
-## Project structure
-
-- `PluginProcessor.*`: audio processing, parameters and plugin state
-- `DynamicBand.*`: the band-pass plus parallel compression stage, used twice
-- `LoudnessMeter.*`: K-weighted loudness measurement for Match
-- `PluginEditor.*`, `SpectrumDisplay.*`, `Theme.h`: the interface
-- `SpectrumBuffer.h`: lock-free bridge between the audio and UI threads.
